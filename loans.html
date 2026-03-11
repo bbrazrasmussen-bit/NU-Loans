@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>Equipment Loans</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: linear-gradient(135deg, #ede9fe 0%, #e0e7ff 100%);
+    min-height: 100vh; padding: 24px 16px; }
+  .card { background: #fff; border-radius: 20px; padding: 24px;
+    max-width: 480px; margin: 0 auto;
+    box-shadow: 0 4px 32px rgba(99,102,241,0.13); }
+  label { display: block; font-weight: 600; font-size: 13px;
+    color: #4338ca; margin-bottom: 5px; }
+  input { width: 100%; padding: 12px 14px; border-radius: 10px;
+    border: 1.5px solid #c7d2fe; font-size: 15px; background: #f8f9ff;
+    outline: none; transition: border 0.2s; }
+  input:focus { border-color: #6366f1; }
+  .field { margin-bottom: 16px; }
+  .row { display: flex; gap: 8px; }
+  .row input { flex: 1; }
+  button.scan-btn { padding: 12px 14px; background: #6366f1; color: #fff;
+    border: none; border-radius: 10px; cursor: pointer; font-size: 20px; flex-shrink: 0; }
+  .item-hint { margin-top: 6px; font-size: 13px; font-weight: 600; min-height: 18px; }
+  .hint-ok { color: #059669; } .hint-err { color: #dc2626; }
+  button.submit-btn { width: 100%; padding: 14px; background: #6366f1; color: #fff;
+    border: none; border-radius: 12px; font-size: 16px; font-weight: 700;
+    cursor: pointer; transition: background 0.2s; }
+  button.submit-btn:disabled { background: #c7d2fe; color: #818cf8; cursor: not-allowed; }
+  .banner { border-radius: 10px; padding: 12px 16px; margin-bottom: 20px;
+    font-weight: 600; text-align: center; }
+  .banner-ok  { background: #d1fae5; border: 1px solid #34d399; color: #065f46; }
+  .banner-err { background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; }
+  .screen { display: none; position: fixed; inset: 0;
+    background: linear-gradient(135deg, #ede9fe 0%, #e0e7ff 100%);
+    justify-content: center; align-items: center; z-index: 200; padding: 24px; }
+  .screen.active { display: flex; }
+  .screen-box { background: #fff; border-radius: 20px; padding: 32px 28px;
+    max-width: 340px; width: 100%; text-align: center;
+    box-shadow: 0 8px 40px rgba(99,102,241,0.18); }
+  .screen-box h2 { color: #3730a3; margin-bottom: 8px; }
+  .screen-box p { color: #64748b; font-size: 13px; margin-bottom: 24px; line-height: 1.6; }
+  .ms-btn { width: 100%; padding: 13px; background: #6366f1; color: #fff;
+    border: none; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer; }
+  .ms-btn:disabled { background: #c7d2fe; cursor: not-allowed; }
+  #scanner-overlay { display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.85); z-index: 100;
+    justify-content: center; align-items: center; padding: 16px; }
+  #scanner-overlay.active { display: flex; }
+  .scanner-box { background: #1e1b4b; border-radius: 16px; overflow: hidden;
+    width: 100%; max-width: 420px; }
+  video { width: 100%; display: block; max-height: 280px; object-fit: cover; }
+  .scan-frame { position: absolute; inset: 0; border: 3px solid #6366f1;
+    border-radius: 16px; pointer-events: none; }
+  .scan-line { position: absolute; top: 50%; left: 10%; right: 10%;
+    height: 2px; background: rgba(99,102,241,0.8); transform: translateY(-50%); }
+  .scanner-ui { padding: 16px; }
+  .scanner-status { color: #a5b4fc; font-size: 13px; text-align: center; margin-bottom: 12px; }
+  .scanner-manual { display: flex; gap: 8px; margin-bottom: 10px; }
+  .scanner-manual input { flex: 1; background: #312e81; color: #fff; border: 1px solid #4338ca; }
+  .scanner-manual button { padding: 10px 14px; background: #6366f1; color: #fff;
+    border: none; border-radius: 10px; cursor: pointer; font-weight: 600; }
+  .cancel-btn { width: 100%; padding: 9px 0; background: transparent;
+    color: #a5b4fc; border: 1px solid #4338ca; border-radius: 8px; cursor: pointer; font-size: 13px; }
+  .video-wrap { position: relative; }
+  .spinner { display: inline-block; width: 16px; height: 16px;
+    border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%;
+    animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- ╔══════════════════════════════════════════╗
+     ║  CONFIG                                 ║
+     ╚══════════════════════════════════════════╝ -->
+<script>
+const SITE       = 'https://northeastern.sharepoint.com/sites/NUTorontoCampus';
+const ITEMS_LIST = 'EquipmentItems';
+const LOANS_LIST = 'EquipmentLoans';
+</script>
+<!-- ══════════════════════════════════════════ -->
+
+<!-- Staff setup / session expired screen -->
+<div id="auth-screen" class="screen">
+  <div class="screen-box">
+    <div style="font-size:40px;margin-bottom:12px;">🔐</div>
+    <h2 id="auth-title">Staff Setup Required</h2>
+    <p id="auth-msg">A staff member needs to sign in once to activate this kiosk. Students will not need to sign in.</p>
+    <button class="ms-btn" id="auth-btn" onclick="doLogin()">Sign in with Microsoft</button>
+    <p id="auth-error" style="color:#dc2626;font-size:13px;margin-top:12px;display:none;">Sign-in failed. Please try again.</p>
+  </div>
+</div>
+
+<!-- Main loan form -->
+<div id="app" style="display:none;">
+  <div style="text-align:center;margin-bottom:16px;">
+    <div style="font-size:40px;">📦</div>
+    <h1 style="color:#3730a3;font-size:24px;font-weight:800;">Equipment Loans</h1>
+  </div>
+  <div class="card">
+    <div id="banner" class="banner" style="display:none;"></div>
+    <div class="field">
+      <label>Student Name</label>
+      <input id="studentName" type="text" placeholder="Full name" autocomplete="off" oninput="checkReady()" />
+    </div>
+    <div class="field">
+      <label>NUID</label>
+      <input id="nuid" type="text" placeholder="Student ID number" autocomplete="off" inputmode="numeric" oninput="checkReady()" />
+    </div>
+    <div class="field">
+      <label>Item ID</label>
+      <div class="row">
+        <input id="itemId" type="text" placeholder="Scan or enter item ID" autocomplete="off" oninput="onItemIdChange()" />
+        <button class="scan-btn" onclick="openScanner()" title="Scan barcode">📷</button>
+      </div>
+      <div id="itemHint" class="item-hint"></div>
+    </div>
+    <div class="field">
+      <label>Item Name <span style="font-weight:400;color:#94a3b8;">(auto-filled or enter manually)</span></label>
+      <input id="itemName" type="text" placeholder="e.g. Canon Camera, Tripod #3" autocomplete="off" oninput="checkReady()" />
+    </div>
+    <button class="submit-btn" id="submitBtn" onclick="submitLoan()" disabled>Submit Loan</button>
+  </div>
+</div>
+
+<!-- Scanner Overlay -->
+<div id="scanner-overlay">
+  <div class="scanner-box">
+    <div class="video-wrap">
+      <video id="scanner-video" muted playsinline></video>
+      <div class="scan-frame"><div class="scan-line"></div></div>
+    </div>
+    <div class="scanner-ui">
+      <p id="scanner-status" class="scanner-status">Starting camera…</p>
+      <div class="scanner-manual">
+        <input id="manualCode" type="text" placeholder="Or type Item ID manually…"
+          onkeydown="if(event.key==='Enter') useManual()" />
+        <button onclick="useManual()">Use</button>
+      </div>
+      <button class="cancel-btn" onclick="closeScanner()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-authentication-library-for-js/2.38.2/msal-browser.min.js"></script>
+<script>
+const msalConfig = {
+  auth: {
+    clientId: '57c8a308-e7b6-47b1-bc5c-559e7fec2222',
+    authority: 'https://login.microsoftonline.com/common',
+    redirectUri: window.location.href.split('?')[0]
+  },
+  cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: true }
+};
+
+const SCOPES = ['https://northeastern.sharepoint.com/AllSites.Write',
+                'https://northeastern.sharepoint.com/AllSites.Read'];
+
+let msalApp;
+
+async function boot() {
+  try {
+    msalApp = new msal.PublicClientApplication(msalConfig);
+    await msalApp.initialize();
+    await msalApp.handleRedirectPromise();
+
+    const accounts = msalApp.getAllAccounts();
+    if (accounts.length > 0) {
+      // Try silent token — if it works, go straight to the form
+      try {
+        await msalApp.acquireTokenSilent({ scopes: SCOPES, account: accounts[0] });
+        showApp();
+        return;
+      } catch { /* fall through to login screen */ }
+    }
+    showAuthScreen('Staff Setup Required',
+      'A staff member needs to sign in once to activate this kiosk. Students will not need to sign in.');
+  } catch (e) {
+    console.error('Boot error:', e);
+    showAuthScreen('Staff Setup Required',
+      'A staff member needs to sign in once to activate this kiosk. Students will not need to sign in.');
+  }
+}
+
+function showAuthScreen(title, msg) {
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('auth-title').textContent = title;
+  document.getElementById('auth-msg').textContent = msg;
+  document.getElementById('auth-error').style.display = 'none';
+  document.getElementById('auth-screen').classList.add('active');
+}
+
+function showApp() {
+  document.getElementById('auth-screen').classList.remove('active');
+  document.getElementById('app').style.display = 'block';
+  loadItems();
+}
+
+async function doLogin() {
+  const btn = document.getElementById('auth-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Signing in…';
+  try {
+    await msalApp.loginPopup({ scopes: SCOPES });
+    showApp();
+  } catch (e) {
+    console.error('Login error:', e);
+    document.getElementById('auth-error').style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Sign in with Microsoft';
+  }
+}
+
+async function getToken() {
+  const accounts = msalApp.getAllAccounts();
+  try {
+    const res = await msalApp.acquireTokenSilent({ scopes: SCOPES, account: accounts[0] });
+    return res.accessToken;
+  } catch {
+    const res = await msalApp.acquireTokenPopup({ scopes: SCOPES });
+    return res.accessToken;
+  }
+}
+
+async function spGet(path) {
+  const token = await getToken();
+  const r = await fetch(`${SITE}/_api/${path}`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json;odata=nometadata' }
+  });
+  if (!r.ok) throw new Error(r.status + ' ' + await r.text());
+  return r.json();
+}
+
+async function spPost(path, body) {
+  const token = await getToken();
+  const r = await fetch(`${SITE}/_api/${path}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json;odata=nometadata',
+      'Content-Type': 'application/json;odata=nometadata'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error(r.status + ' ' + await r.text());
+  return r.json();
+}
+
+// ── Item lookup
+let itemCache = null;
+
+async function loadItems() {
+  try {
+    const data = await spGet(`web/lists/getbytitle('${ITEMS_LIST}')/items?$select=ItemCode,ItemName&$top=2000`);
+    itemCache = {};
+    data.value.forEach(row => {
+      if (row.ItemCode) itemCache[String(row.ItemCode).trim().toUpperCase()] = String(row.ItemName).trim();
+    });
+  } catch (e) {
+    console.error('Failed to load items:', e);
+    itemCache = {};
+  }
+}
+
+async function onItemIdChange() {
+  const val = document.getElementById('itemId').value.trim();
+  const hint = document.getElementById('itemHint');
+  const nameInput = document.getElementById('itemName');
+  if (!val) { hint.textContent = ''; nameInput.value = ''; checkReady(); return; }
+  if (!itemCache) await loadItems();
+  const name = itemCache[val.toUpperCase()];
+  if (name) {
+    hint.textContent = '✓ ' + name; hint.className = 'item-hint hint-ok'; nameInput.value = name;
+  } else {
+    hint.textContent = 'Not found in database — enter name manually';
+    hint.className = 'item-hint hint-err'; nameInput.value = '';
+  }
+  checkReady();
+}
+
+function checkReady() {
+  const ok = ['studentName','nuid','itemId','itemName'].every(id => document.getElementById(id).value.trim());
+  document.getElementById('submitBtn').disabled = !ok;
+}
+
+async function submitLoan() {
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Saving…';
+  try {
+    await spPost(`web/lists/getbytitle('${LOANS_LIST}')/items`, {
+      Title:       document.getElementById('itemName').value.trim(),
+      StudentName: document.getElementById('studentName').value.trim(),
+      NUID:        document.getElementById('nuid').value.trim(),
+      ItemCode:    document.getElementById('itemId').value.trim(),
+      ItemName:    document.getElementById('itemName').value.trim(),
+      LoanedAt:    new Date().toISOString(),
+      Returned:    false,
+      ReturnedAt:  null
+    });
+    ['studentName','nuid','itemId','itemName'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('itemHint').textContent = '';
+    showBanner('✅ Loan recorded successfully!', true);
+  } catch (e) {
+    console.error('Submit error:', e);
+    if (isAuthError(e)) {
+      showAuthScreen('Session Expired',
+        'The staff session has expired. Please ask a staff member to sign in again to reactivate the kiosk.');
+    } else {
+      showBanner('❌ Error saving loan. Please try again.', false);
+    }
+  }
+  btn.innerHTML = 'Submit Loan';
+  checkReady();
+}
+
+function isAuthError(e) {
+  const msg = String(e.message || '').toLowerCase();
+  return msg.includes('401') || msg.includes('403') || msg.includes('unauthorized') ||
+    msg.includes('interaction_required') || msg.includes('login_required');
+}
+
+function showBanner(msg, ok) {
+  const b = document.getElementById('banner');
+  b.textContent = msg; b.className = 'banner ' + (ok ? 'banner-ok' : 'banner-err');
+  b.style.display = 'block'; setTimeout(() => b.style.display = 'none', 4000);
+}
+
+// ── Scanner
+let scanStream = null, scanInterval = null, detecting = false;
+
+async function openScanner() {
+  document.getElementById('scanner-overlay').classList.add('active');
+  document.getElementById('manualCode').value = '';
+  const video = document.getElementById('scanner-video');
+  const status = document.getElementById('scanner-status');
+  try {
+    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    video.srcObject = scanStream; await video.play();
+    if ('BarcodeDetector' in window) {
+      const detector = new BarcodeDetector({ formats: ['qr_code','code_128','code_39','ean_13','ean_8','upc_a','upc_e','data_matrix','pdf417'] });
+      status.textContent = 'Point camera at barcode or QR code';
+      scanInterval = setInterval(async () => {
+        if (detecting) return; detecting = true;
+        try {
+          const results = await detector.detect(video);
+          if (results.length) { clearInterval(scanInterval); applyCode(results[0].rawValue); }
+        } catch {}
+        detecting = false;
+      }, 400);
+    } else { status.textContent = 'Auto-detect unavailable — use manual entry below'; }
+  } catch { status.textContent = 'Camera unavailable — use manual entry below'; }
+}
+
+function closeScanner() {
+  clearInterval(scanInterval);
+  if (scanStream) scanStream.getTracks().forEach(t => t.stop());
+  scanStream = null;
+  document.getElementById('scanner-overlay').classList.remove('active');
+}
+
+function applyCode(code) { closeScanner(); document.getElementById('itemId').value = code; onItemIdChange(); }
+function useManual() { const v = document.getElementById('manualCode').value.trim(); if (v) applyCode(v); }
+
+boot();
+</script>
+</body>
+</html>
